@@ -1,6 +1,6 @@
 import React, { useCallback, useDeferredValue, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, FileArchive, FileText, FolderOpen, Loader2, Share, Upload } from "lucide-react";
+import { AlertTriangle, Download, FileArchive, FileText, FolderOpen, Loader2, Share, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Section, Field, Segmented } from "@/components/Section";
@@ -229,14 +229,25 @@ export default function Home() {
           >
             <Upload /> {hasFiles ? "Add file" : "Open data file"}
           </Button>
-          {!hasFiles && (
-            <p className="text-center text-xs text-neutral-400">
-              No data handy?{" "}
-              <button onClick={loadSample} className="font-medium text-neutral-600 underline underline-offset-2 hover:text-neutral-900">
-                Try the sample file
-              </button>
-            </p>
-          )}
+          <p className={hasFiles ? "text-xs text-neutral-400" : "text-center text-xs text-neutral-400"}>
+            {!hasFiles && (
+              <>
+                No data handy?{" "}
+                <button onClick={loadSample} className="font-medium text-neutral-600 underline underline-offset-2 hover:text-neutral-900">
+                  Try the sample file
+                </button>
+                {" · "}
+              </>
+            )}
+            <a
+              href="/Wattson_Template.csv"
+              download="Wattson_Template.csv"
+              className="inline-flex items-center gap-1 font-medium text-neutral-600 underline underline-offset-2 hover:text-neutral-900"
+            >
+              <Download className="h-3 w-3" /> Download template
+            </a>
+            {hasFiles ? null : <span className="mt-1 block">One day of 15-minute rows in the Smart Meter Texas layout. Fill in USAGE_KWH and add days as needed.</span>}
+          </p>
           <input ref={fileInput} type="file" accept={ACCEPT} multiple hidden onChange={(e) => {
             onDeviceFiles(e.target.files);
             e.target.value = "";

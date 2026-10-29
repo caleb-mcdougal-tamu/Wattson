@@ -18,11 +18,23 @@ test("detects the Smart Meter Texas format", () => {
   assert.equal(layout.format, "smt");
   assert.equal(meters.length, 1);
   assert.equal(meters[0].intervalMin, 15);
-  assert.equal(meters[0].count, 35808); // 4 blank rows on 3/8/2026 (spring forward) skipped
-  assert.equal(meters[0].estimated, 92);
-  assert.equal(meters[0].duplicates, 4); // the repeated hour on 11/2/2025
-  assert.equal(warnings.length, 1);
-  assert.match(warnings[0], /^4 intervals with no reading/);
+  assert.equal(meters[0].count, 35808); // 373 cleaned days × 96 intervals
+  assert.equal(meters[0].estimated, 24);
+  assert.equal(meters[0].duplicates, 0);
+  assert.equal(meters[0].missing, 0);
+  assert.deepEqual(warnings, []);
+});
+
+test("the downloadable template is read as Smart Meter Texas data once filled in", () => {
+  const rows = parseCSV(readFileSync(new URL("../public/Wattson_Template.csv", import.meta.url), "utf8"));
+  rows.slice(1).forEach((r, i) => (r[5] = String(i % 7)));
+  const table = { name: "Wattson_Template.csv", rows };
+  const layout = detectLayout(table);
+  assert.equal(layout.format, "smt");
+  const { meters } = buildMeters(table, layout);
+  assert.equal(meters[0].count, 96);
+  assert.equal(meters[0].intervalMin, 15);
+  assert.equal(meters[0].missing, 0);
 });
 
 test("parses the cell formats the importer accepts", () => {

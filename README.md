@@ -4,6 +4,8 @@ Interval demand data, visualized.
 
 Wattson is a mobile-friendly web app that turns 15-minute (or any interval) electricity usage data into the demand plots used in energy assessments. It is a JavaScript port of the Python tool in [`python/`](python/), with interactive charts, smarter file import, and PNG, ZIP and PDF exports.
 
+> **Credit:** Wattson is based on the 15-minute demand visualization tool developed by **Noah Hickson, PhD, Texas A&M University**. The calculations, plots and data guidance come from that original Python tool, included in [`python/`](python/).
+
 There is no backend and no account. Files are read and plotted in the browser and never uploaded, so hosting is free. The app is a static site, and Vercel's free tier works well.
 
 ## What it makes
@@ -43,7 +45,20 @@ Unlike the Python tool, no manual Excel cleanup is needed:
 - Daylight saving days are handled. Blank readings in the hour skipped in spring are dropped, and the repeated hour in fall is kept.
 - Meters with different start and end dates are lined up by timestamp.
 
-The sample file is real 15-minute data from one facility (7/1/2025 – 7/8/2026). Its ESIID has been replaced with the placeholder `00000000000000000`.
+### Sample file
+
+The [sample file](sample-data/SmartMeterTexas_IntervalData_sample.csv) is real 15-minute data from one facility (7/1/2025 – 7/8/2026, 373 days). [`clean_smt_sample.py`](sample-data/clean_smt_sample.py) made it from the raw Smart Meter Texas export:
+
+- The ESIID is replaced with the placeholder `00000000000000000`.
+- On 11/2/2025 (clocks fall back), the repeated 1:00–2:00 hour is removed. Smart Meter Texas lists it twice, with the second pass's first row mislabeled `2:00 → 1:15`.
+- On 3/8/2026 (clocks spring forward), the four blank readings for the skipped hour are filled by interpolating between their neighbours and marked `E` (estimated).
+- An isolated estimated reading of 0 kWh at 7/7/2025 0:00 is replaced with the average of its neighbours (still marked `E`).
+
+Every day has exactly 96 intervals. Real zero readings, such as the shutdown on 6/19/2026, are kept.
+
+### Template
+
+The app's **Download template** link gives [`Wattson_Template.csv`](public/Wattson_Template.csv): one day of 15-minute rows in the Smart Meter Texas layout. Fill in `USAGE_KWH`, copy the rows for more days, and change `USAGE_DATE`. Only `USAGE_DATE`, `USAGE_START_TIME` and `USAGE_KWH` are required; `ESIID` can name the meter, and the other columns can stay as they are.
 
 ## Setup
 
@@ -73,7 +88,7 @@ It opens full screen like an app.
 
 ## The Python tool
 
-[`python/15MinData_Visualizations_2026.py`](python/15MinData_Visualizations_2026.py) is the original tool, unchanged, with its [Word guide](python/15MinData_Visualizations_Instructions_2026.docx). It needs `pandas`, `numpy`, `matplotlib` and `openpyxl`. Follow the instructions at the top of the script.
+[`python/15MinData_Visualizations_2026.py`](python/15MinData_Visualizations_2026.py) is the original tool by Noah Hickson, PhD, Texas A&M University, unchanged, with its [Word guide](python/15MinData_Visualizations_Instructions_2026.docx). It needs `pandas`, `numpy`, `matplotlib` and `openpyxl`. Follow the instructions at the top of the script.
 
 ### Checking the port
 
@@ -90,7 +105,8 @@ Small differences from the Python tool:
 
 ```
 python/                       The original Python tool and its Word guide (unchanged)
-sample-data/                  Smart Meter Texas sample file (ESIID replaced with a placeholder)
+sample-data/                  Cleaned Smart Meter Texas sample file and the script that cleaned it
+public/Wattson_Template.csv   Blank one-day data template offered in the app
 src/
   lib/demandAnalysis.js       JavaScript port of the Python tool's calculations
   lib/smartImport.js          File reading and format detection (CSV/Excel, Smart Meter Texas, template, custom)
