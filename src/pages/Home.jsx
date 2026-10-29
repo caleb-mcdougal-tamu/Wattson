@@ -1,53 +1,45 @@
 import React, { useCallback, useDeferredValue, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, FileArchive, FileText, FolderOpen, Loader2, Upload } from "lucide-react";
+import { AlertTriangle, FileArchive, FileText, FolderOpen, Loader2, Share, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Section, Field, Segmented } from "@/components/Section";
 import DataFiles from "@/components/DataFiles";
 import ColumnsDialog from "@/components/ColumnsDialog";
-import DriveFilePicker from "@/components/DriveFilePicker";
-import DriveIcon from "@/components/DriveIcon";
 import StatsCard from "@/components/StatsCard";
 import PlotCard from "@/components/PlotCard";
 import DailyBuilder from "@/components/DailyBuilder";
-import { useAuth } from "@/lib/AuthContext";
 import { importFile } from "@/lib/smartImport";
 import { validateInputs, combineMeters, summaryStats, standardPlots, dailyDemandAnalysis } from "@/lib/demandAnalysis";
 import { renderPng, formatDate } from "@/lib/charts";
-import { renderAll, buildZip, buildPdf, statsRows, statsCsv, downloadBlob, plotFileName, fileSlug, safeName, timestamp } from "@/lib/exports";
-import { SHEET_MIME, downloadBlob as driveDownload, exportBlob } from "@/lib/google/drive";
-import { saveFiles } from "@/lib/google/driveStore";
+import { renderAll, buildZip, buildPdf, statsRows, downloadBlob, plotFileName, fileSlug, timestamp, canShareFiles, shareBlob } from "@/lib/exports";
 import sampleUrl from "../../sample-data/SmartMeterTexas_IntervalData_sample.csv?url";
 
 const ACCEPT = ".csv,.txt,.xlsx,.xls,.xlsm,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel";
 let nextKey = 1;
 
 export default function Home() {
-  const { configured, isAuthenticated, login } = useAuth();
   const fileInput = useRef(null);
+  const [canShare] = useState(canShareFiles);
 
   const [files, setFiles] = useState([]);
   const [excluded, setExcluded] = useState(new Set());
   const [demandType, setDemandType] = useState("kW");
   const [powerFactors, setPowerFactors] = useState({});
   const [titleHeader, setTitleHeader] = useState("");
-  const [siteName, setSiteName] = useState("");
   const [bins, setBins] = useState("30");
   const [custom, setCustom] = useState([]);
   const [columnsFor, setColumnsFor] = useState(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(null); // { kind, done, total }
-  const [plotBusy, setPlotBusy] = useState({}); // plot id -> "png" | "drive"
-  const [savingKey, setSavingKey] = useState(null);
+  const [plotBusy, setPlotBusy] = useState({}); // plot id -> "png" | "share"
 
   // ---------------------------------------------------------------- files
 
   const updateFile = (key, patch) => setFiles((fs) => fs.map((f) => (f.key === key ? { ...f, ...patch } : f)));
 
   const addFiles = useCallback(async (list) => {
-    const entries = list.map((item) => ({ key: nextKey++, name: item.file.name, source: item.source, original: item.file, loading: true }));
+    const entries = list.map((file) => ({ key: nextKey++, name: file.name, loading: true, original: file }));
     setFiles((fs) => [...fs, ...entries]);
     await Promise.all(
       entries.map(async (entry) => {
@@ -62,30 +54,13 @@ export default function Home() {
   }, []);
 
   const onDeviceFiles = (fileList) => {
-    const list = [...(fileList || [])].map((file) => ({ file, source: "device" }));
+    const list = [...(fileList || [])];
     if (list.length) addFiles(list);
   };
 
   const loadSample = async () => {
     const blob = await (await fetch(sampleUrl)).blob();
-    addFiles([{ file: new File([blob], "SmartMeterTexas_IntervalData_sample.csv", { type: "text/csv" }), source: "device" }]);
-  };
-
-  const onDrivePick = async (picked) => {
-    setPickerOpen(false);
-    const list = await Promise.all(
-      picked.map(async (f) => {
-        try {
-          const isSheet = f.mimeType === SHEET_MIME;
-          const blob = isSheet ? await exportBlob(f.id) : await driveDownload(f.id);
-          return { file: new File([blob], isSheet ? `${f.name}.xlsx` : f.name), source: "drive" };
-        } catch (e) {
-          toast.error(`Couldn't download ${f.name}: ${e.message}`);
-          return null;
-        }
-      })
-    );
-    addFiles(list.filter(Boolean));
+    addFiles([new File([blob], "SmartMeterTexas_IntervalData_sample.csv", { type: "text/csv" })]);
   };
 
   const removeFile = (f) => {
@@ -130,16 +105,23 @@ export default function Home() {
     ];
   }, [data, stats, deferredHeader, deferredBins, custom]);
 
-  const site = safeName(siteName.trim() || titleHeader.trim() || files[0]?.name.replace(/\.[^.]+$/, "") || "Wattson");
-  const reportTitle = titleHeader.trim() || site;
+  const reportTitle = titleHeader.trim() || files[0]?.name.replace(/\.[^.]+$/, "") || "Wattson";
   const rows = stats ? statsRows(stats, { demandType, meters }) : [];
 
   // ---------------------------------------------------------------- exports
 
-  const ensureDrive = async () => (isAuthenticated ? true : login());
-
-  const driveToast = (message, url) =>
-    toast.success(message, { action: { label: "Open", onClick: () => window.open(url, "_blank", "noopener") } });
+  // Download on computers; on phones open the share sheet. If rendering took long
+  // enough that the browser no longer counts the original tap, ask for another.
+  const deliver = async (blob, name, share) => {
+    if (!share) return downloadBlob(blob, name);
+    const result = await shareBlob(blob, name);
+    if (result === "needs-tap") {
+      toast(`${name} is ready`, {
+        duration: 20000,
+        action: { label: "Share", onClick: () => shareBlob(blob, name).catch((e) => toast.error(e.message)) },
+      });
+    }
+  };
 
   const run = async (kind, fn) => {
     setBusy({ kind, done: 0, total: 0 });
@@ -152,72 +134,30 @@ export default function Home() {
     }
   };
 
-  const downloadZip = () =>
-    run("zip", async (progress) => {
+  const exportZip = (share) =>
+    run(share ? "zip-share" : "zip", async (progress) => {
       const images = await renderAll(plots, progress);
-      downloadBlob(await buildZip(images, rows), `${fileSlug(reportTitle)}_plots_${timestamp()}.zip`);
+      await deliver(await buildZip(images, rows), `${fileSlug(reportTitle)}_plots_${timestamp()}.zip`, share);
     });
 
-  const pdfFor = (images) =>
-    buildPdf(images, rows, {
-      title: `${reportTitle} – Demand Analysis`,
-      subtitle: `${formatDate(stats.start)} – ${formatDate(stats.end)} · demand in ${demandType} · made with Wattson`,
-    });
-
-  const downloadPdf = () =>
-    run("pdf", async (progress) => {
+  const exportPdf = (share) =>
+    run(share ? "pdf-share" : "pdf", async (progress) => {
       const images = await renderAll(plots, progress);
-      downloadBlob(await pdfFor(images), `${fileSlug(reportTitle)}_report_${timestamp()}.pdf`);
+      const pdf = await buildPdf(images, rows, {
+        title: `${reportTitle} – Demand Analysis`,
+        subtitle: `${formatDate(stats.start)} – ${formatDate(stats.end)} · demand in ${demandType} · made with Wattson`,
+      });
+      await deliver(pdf, `${fileSlug(reportTitle)}_report_${timestamp()}.pdf`, share);
     });
 
-  const saveAllToDrive = async () => {
-    if (!(await ensureDrive())) return;
-    run("drive", async (progress) => {
-      const images = await renderAll(plots, progress);
-      const stamp = timestamp();
-      const out = [
-        ...images,
-        { name: `${fileSlug(reportTitle)}_report_${stamp}.pdf`, blob: await pdfFor(images) },
-        { name: "summary.csv", blob: statsCsv(rows) },
-      ];
-      const url = await saveFiles(site, out, { subfolder: `${safeName(reportTitle)} ${stamp}`, onProgress: progress });
-      driveToast(`Saved ${images.length} plots and the PDF report to Wattson/${site}/Plots`, url);
-    });
-  };
-
-  const withPlotBusy = async (plot, kind, fn) => {
-    setPlotBusy((b) => ({ ...b, [plot.id]: kind }));
+  const exportPlot = async (plot, i, share) => {
+    setPlotBusy((b) => ({ ...b, [plot.id]: share ? "share" : "png" }));
     try {
-      await fn();
+      await deliver(await renderPng(plot), plotFileName(plot, i), share);
     } catch (e) {
       toast.error(e.message || "Something went wrong.");
     } finally {
       setPlotBusy((b) => ({ ...b, [plot.id]: undefined }));
-    }
-  };
-
-  const downloadPlot = (plot, i) =>
-    withPlotBusy(plot, "png", async () => downloadBlob(await renderPng(plot), plotFileName(plot, i)));
-
-  const savePlotToDrive = async (plot, i) => {
-    if (!(await ensureDrive())) return;
-    withPlotBusy(plot, "drive", async () => {
-      const url = await saveFiles(site, [{ name: plotFileName(plot, i), blob: await renderPng(plot) }]);
-      driveToast(`Saved to Wattson/${site}/Plots`, url);
-    });
-  };
-
-  const saveDataToDrive = async (f) => {
-    if (!(await ensureDrive())) return;
-    setSavingKey(f.key);
-    try {
-      const url = await saveFiles(site, [{ name: f.name, blob: f.original }], { kind: "data" });
-      updateFile(f.key, { source: "drive" });
-      driveToast(`Saved ${f.name} to Wattson/${site}/Data`, url);
-    } catch (e) {
-      toast.error(e.message);
-    } finally {
-      setSavingKey(null);
     }
   };
 
@@ -229,9 +169,14 @@ export default function Home() {
   const busyLabel = (kind, label) =>
     busy?.kind === kind ? (busy.total ? `Rendering ${Math.min(busy.done + 1, busy.total)}/${busy.total}` : "Working…") : label;
 
+  const ExportButton = ({ kind, icon: Icon, label, onClick }) => (
+    <Button variant="outline" onClick={onClick} disabled={!!busy}>
+      {busy?.kind === kind ? <Loader2 className="animate-spin" /> : <Icon />} {busyLabel(kind, label)}
+    </Button>
+  );
+
   // ---------------------------------------------------------------- render
 
-  const driveAvailable = configured;
   const hasFiles = files.length > 0;
 
   return (
@@ -241,7 +186,7 @@ export default function Home() {
           <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Interval demand, visualized</h1>
           <p className="mt-1 text-sm text-neutral-500">
             Open 15-minute (or any interval) usage data to plot demand patterns: histogram, annual trend, daily
-            profiles and monthly box plots. Files are read on this device; nothing is uploaded unless you save to Google Drive.
+            profiles and monthly box plots. Files are read on this device and never uploaded.
           </p>
         </div>
       )}
@@ -274,26 +219,16 @@ export default function Home() {
               onPf={(id, v) => setPowerFactors((p) => ({ ...p, [id]: v }))}
               onColumns={setColumnsFor}
               onRemove={removeFile}
-              onSaveDrive={saveDataToDrive}
-              drive={driveAvailable}
-              savingKey={savingKey}
             />
           )}
-          <div className={hasFiles ? "flex flex-wrap gap-2" : "grid gap-2 sm:grid-cols-2"}>
-            <Button variant={hasFiles ? "outline" : "default"} size={hasFiles ? "sm" : "lg"} onClick={() => fileInput.current?.click()} className={hasFiles ? "" : "h-12"}>
-              <Upload /> {hasFiles ? "Add file" : "Open from device"}
-            </Button>
-            {driveAvailable && (
-              <Button
-                variant="outline"
-                size={hasFiles ? "sm" : "lg"}
-                className={hasFiles ? "" : "h-12"}
-                onClick={async () => (await ensureDrive()) && setPickerOpen(true)}
-              >
-                <DriveIcon className="h-4 w-4" /> {hasFiles ? "Add from Drive" : "Open from Google Drive"}
-              </Button>
-            )}
-          </div>
+          <Button
+            variant={hasFiles ? "outline" : "default"}
+            size={hasFiles ? "sm" : "lg"}
+            onClick={() => fileInput.current?.click()}
+            className={hasFiles ? "" : "h-12 w-full"}
+          >
+            <Upload /> {hasFiles ? "Add file" : "Open data file"}
+          </Button>
           {!hasFiles && (
             <p className="text-center text-xs text-neutral-400">
               No data handy?{" "}
@@ -318,14 +253,9 @@ export default function Home() {
             <Field label="Histogram bins">
               <Input type="number" inputMode="numeric" min={1} max={200} value={bins} onChange={(e) => setBins(e.target.value)} />
             </Field>
-            <Field label="Title header" hint="Added to the start of every plot title, e.g. “All Meters” or “Meter 1234”.">
+            <Field label="Title header" hint="Added to the start of every plot title, e.g. “All Meters” or “Meter 1234”." className="sm:col-span-2">
               <Input value={titleHeader} onChange={(e) => setTitleHeader(e.target.value)} placeholder="Optional" />
             </Field>
-            {driveAvailable && (
-              <Field label="Site (Google Drive folder)" hint={`Saved under Wattson/${site}/ in your Drive.`}>
-                <Input value={siteName} onChange={(e) => setSiteName(e.target.value)} placeholder={site} />
-              </Field>
-            )}
           </div>
         </Section>
       )}
@@ -344,17 +274,14 @@ export default function Home() {
         <>
           <Section title="Summary">
             <StatsCard stats={stats} demandType={demandType} dropped={data.dropped} />
-            <div className="mt-4 grid gap-2 sm:grid-cols-3">
-              <Button variant="outline" onClick={downloadZip} disabled={!!busy}>
-                {busy?.kind === "zip" ? <Loader2 className="animate-spin" /> : <FileArchive />} {busyLabel("zip", "Download PNGs (ZIP)")}
-              </Button>
-              <Button variant="outline" onClick={downloadPdf} disabled={!!busy}>
-                {busy?.kind === "pdf" ? <Loader2 className="animate-spin" /> : <FileText />} {busyLabel("pdf", "PDF report")}
-              </Button>
-              {driveAvailable && (
-                <Button variant="outline" onClick={saveAllToDrive} disabled={!!busy}>
-                  {busy?.kind === "drive" ? <Loader2 className="animate-spin" /> : <DriveIcon className="h-4 w-4" />} {busyLabel("drive", "Save all to Drive")}
-                </Button>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <ExportButton kind="zip" icon={FileArchive} label="Download PNGs (ZIP)" onClick={() => exportZip(false)} />
+              <ExportButton kind="pdf" icon={FileText} label="Download PDF report" onClick={() => exportPdf(false)} />
+              {canShare && (
+                <>
+                  <ExportButton kind="zip-share" icon={Share} label="Share PNGs (ZIP)" onClick={() => exportZip(true)} />
+                  <ExportButton kind="pdf-share" icon={Share} label="Share PDF report" onClick={() => exportPdf(true)} />
+                </>
               )}
             </div>
           </Section>
@@ -366,9 +293,8 @@ export default function Home() {
                 plot={p}
                 number={i + 1}
                 busy={plotBusy[p.id]}
-                drive={driveAvailable}
-                onDownload={() => downloadPlot(p, i)}
-                onSaveDrive={() => savePlotToDrive(p, i)}
+                onDownload={() => exportPlot(p, i, false)}
+                onShare={canShare ? () => exportPlot(p, i, true) : undefined}
                 onRemove={p.customKey ? () => setCustom((c) => c.filter((x) => x.key !== p.customKey)) : undefined}
               />
             ))}
@@ -395,7 +321,6 @@ export default function Home() {
           setColumnsFor(null);
         }}
       />
-      {driveAvailable && isAuthenticated && <DriveFilePicker open={pickerOpen} onClose={() => setPickerOpen(false)} onPick={onDrivePick} />}
     </div>
   );
 }

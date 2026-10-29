@@ -1,13 +1,11 @@
 import React from "react";
 import { Toaster } from "sonner";
-import { AuthProvider } from "@/lib/AuthContext";
 import Header from "@/components/Header";
-import ReauthDialog from "@/components/ReauthDialog";
 import Home from "@/pages/Home";
 
 export default function App() {
   return (
-    <AuthProvider>
+    <>
       <div className="min-h-screen bg-neutral-50">
         <Header />
         <main className="mx-auto max-w-3xl px-4 py-5 pb-[calc(6rem+env(safe-area-inset-bottom))]">
@@ -20,8 +18,7 @@ export default function App() {
           </a>
         </footer>
       </div>
-      <ReauthDialog />
       <Toaster position="top-center" richColors closeButton />
-    </AuthProvider>
+    </>
   );
 }

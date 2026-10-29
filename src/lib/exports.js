@@ -31,6 +31,31 @@ export function downloadBlob(blob, name) {
   setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
+// Phones and tablets get the system share sheet (Files, email, Messages, ...).
+// Computers download instead, even where the browser supports sharing.
+export function canShareFiles() {
+  try {
+    const probe = new File([""], "probe.png", { type: "image/png" });
+    return window.matchMedia("(pointer: coarse)").matches && !!navigator.canShare?.({ files: [probe] });
+  } catch {
+    return false;
+  }
+}
+
+// Resolves "shared", "cancelled", or "needs-tap" when the browser wants a fresh
+// tap because rendering took too long after the original one.
+export async function shareBlob(blob, name) {
+  const file = new File([blob], name, { type: blob.type });
+  try {
+    await navigator.share({ files: [file], title: name });
+    return "shared";
+  } catch (e) {
+    if (e.name === "AbortError") return "cancelled";
+    if (e.name === "NotAllowedError") return "needs-tap";
+    throw e;
+  }
+}
+
 // [{ name, blob, plot }] for every plot that has data.
 export async function renderAll(plots, onProgress) {
   const list = plots.filter(hasData);

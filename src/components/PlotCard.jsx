@@ -1,11 +1,10 @@
 import React from "react";
-import { Download, Loader2, X } from "lucide-react";
+import { Download, Loader2, Share, X } from "lucide-react";
 import Chart from "@/components/Chart";
-import DriveIcon from "@/components/DriveIcon";
 import { Button } from "@/components/ui/button";
 import { hasData } from "@/lib/charts";
 
-export default function PlotCard({ plot, number, onDownload, onSaveDrive, onRemove, busy, drive }) {
+export default function PlotCard({ plot, number, onDownload, onShare, onRemove, busy }) {
   const empty = !hasData(plot);
   return (
     <article className="rounded-2xl border border-neutral-200 bg-white shadow-sm">
@@ -32,9 +31,9 @@ export default function PlotCard({ plot, number, onDownload, onSaveDrive, onRemo
           <Button variant="ghost" size="sm" onClick={onDownload} disabled={busy}>
             {busy === "png" ? <Loader2 className="animate-spin" /> : <Download />} PNG
           </Button>
-          {drive && (
-            <Button variant="ghost" size="sm" onClick={onSaveDrive} disabled={busy}>
-              {busy === "drive" ? <Loader2 className="animate-spin" /> : <DriveIcon className="h-4 w-4" />} Save to Drive
+          {onShare && (
+            <Button variant="ghost" size="sm" onClick={onShare} disabled={busy}>
+              {busy === "share" ? <Loader2 className="animate-spin" /> : <Share />} Share
             </Button>
           )}
         </footer>

@@ -1,6 +1,5 @@
 import React from "react";
 import { AlertTriangle, FileSpreadsheet, Loader2, SlidersHorizontal, Trash2 } from "lucide-react";
-import DriveIcon from "@/components/DriveIcon";
 import { Input } from "@/components/ui/input";
 import { FORMAT_LABELS } from "@/lib/smartImport";
 import { formatDate } from "@/lib/charts";
@@ -44,7 +43,7 @@ function MeterRow({ meter, included, onToggle, showToggle, demandType, pf, onPf 
   );
 }
 
-export default function DataFiles({ files, excluded, onToggleMeter, demandType, powerFactors, onPf, onColumns, onRemove, onSaveDrive, drive, savingKey }) {
+export default function DataFiles({ files, excluded, onToggleMeter, demandType, powerFactors, onPf, onColumns, onRemove }) {
   const meterCount = files.reduce((n, f) => n + (f.meters?.length || 0), 0);
   return (
     <ul className="space-y-3">
@@ -56,21 +55,10 @@ export default function DataFiles({ files, excluded, onToggleMeter, demandType, 
               <p className="truncate text-sm font-medium text-neutral-900">{f.name}</p>
               <p className="text-xs text-neutral-500">
                 {f.loading ? "Reading…" : f.layout ? FORMAT_LABELS[f.layout.format] : "Couldn't read this file"}
-                {f.source === "drive" && " · from Google Drive"}
               </p>
             </div>
             <div className="-mr-1 -mt-1 flex shrink-0 items-center">
               {f.loading && <Loader2 className="m-1.5 h-4 w-4 animate-spin text-neutral-400" />}
-              {drive && f.source === "device" && f.meters && (
-                <button
-                  onClick={() => onSaveDrive(f)}
-                  disabled={savingKey === f.key}
-                  title="Save this data file to Google Drive"
-                  className="rounded-md p-1.5 hover:bg-neutral-100 disabled:opacity-50"
-                >
-                  {savingKey === f.key ? <Loader2 className="h-4 w-4 animate-spin" /> : <DriveIcon className="h-4 w-4" />}
-                </button>
-              )}
               {f.layout && (
                 <button onClick={() => onColumns(f)} title="Choose columns" className="rounded-md p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800">
                   <SlidersHorizontal className="h-4 w-4" />

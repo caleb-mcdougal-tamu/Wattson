@@ -1,7 +1,7 @@
 {
   "name": "Wattson",
   "short_name": "Wattson",
-  "description": "Visualize 15-minute interval demand data. Plots are saved to your device or your Google Drive.",
+  "description": "Visualize 15-minute interval demand data in your browser. Plots download as PNG, ZIP or PDF.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#fafafa",
