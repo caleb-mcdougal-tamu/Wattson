@@ -181,11 +181,10 @@ function annualOption(plot, exp) {
         type: "line",
         name: "Demand",
         data: plot.points,
+        // Every interval is drawn, as in the Python tool: no downsampling.
         symbol: "none",
-        sampling: "lttb",
         lineStyle: { color: COLORS.demand, width: exp ? 1.2 : 1 },
         itemStyle: { color: COLORS.demand },
-        large: true,
       },
       refLine("Peak Demand", plot.peak, COLORS.peak, span, plot.unit, exp),
       refLine("Average Demand", plot.avg, COLORS.avg, span, plot.unit, exp),
