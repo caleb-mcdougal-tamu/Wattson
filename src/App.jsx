@@ -14,7 +14,7 @@ export default function App() {
         <footer className="mx-auto max-w-3xl space-y-1 px-4 pb-8 text-center text-xs text-neutral-400">
           <p>
             Based on the 15-minute demand visualization tool by{" "}
-            <span className="font-medium text-neutral-600">Noah Hickson, PhD, Texas A&amp;M University</span>.
+            <span className="font-medium text-neutral-600">Noah Hankinson, PhD, Texas A&amp;M University</span>.
           </p>
           <p>
             Wattson ·{" "}

@@ -4,7 +4,7 @@ Interval demand data, visualized.
 
 Wattson is a mobile-friendly web app that turns 15-minute (or any interval) electricity usage data into the demand plots used in energy assessments. It is a JavaScript port of the Python tool in [`python/`](python/), with interactive charts, smarter file import, and PNG, ZIP and PDF exports.
 
-> **Credit:** Wattson is based on the 15-minute demand visualization tool developed by **Noah Hickson, PhD, Texas A&M University**. The calculations, plots and data guidance come from that original Python tool, included in [`python/`](python/).
+> **Credit:** Wattson is based on the 15-minute demand visualization tool developed by **Noah Hankinson, PhD, Texas A&M University**. The calculations, plots and data guidance come from that original Python tool, included in [`python/`](python/).
 
 There is no backend and no account. Files are read and plotted in the browser and never uploaded, so hosting is free. The app is a static site, and Vercel's free tier works well.
 
@@ -88,7 +88,7 @@ It opens full screen like an app.
 
 ## The Python tool
 
-[`python/15MinData_Visualizations_2026.py`](python/15MinData_Visualizations_2026.py) is the original tool by Noah Hickson, PhD, Texas A&M University, unchanged, with its [Word guide](python/15MinData_Visualizations_Instructions_2026.docx). It needs `pandas`, `numpy`, `matplotlib` and `openpyxl`. Follow the instructions at the top of the script.
+[`python/15MinData_Visualizations_2026.py`](python/15MinData_Visualizations_2026.py) is the original tool by Noah Hankinson, PhD, Texas A&M University, unchanged, with its [Word guide](python/15MinData_Visualizations_Instructions_2026.docx). It needs `pandas`, `numpy`, `matplotlib` and `openpyxl`. Follow the instructions at the top of the script.
 
 ### Checking the port
 
