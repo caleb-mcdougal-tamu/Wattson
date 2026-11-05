@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { parseCSV, detectLayout, buildMeters, parseDateCell, parseTimeCell } from "../src/lib/smartImport.js";
-import { combineMeters, summaryStats, standardPlots, validateInputs, weekHeatmap, dayHeatmap, selectWeekMetric } from "../src/lib/demandAnalysis.js";
+import { combineMeters, summaryStats, standardPlots, validateInputs, weekHeatmap, dayHeatmap, selectWeekMetric, loadDistribution, describeExceedance } from "../src/lib/demandAnalysis.js";
 
 const SAMPLE = new URL("../sample-data/SmartMeterTexas_IntervalData_sample.csv", import.meta.url);
 
@@ -65,7 +65,7 @@ test("computes demand and the standard visualizations", () => {
   const maxKwh = Math.max(...meters[0].kwh);
   assert.ok(Math.abs(s.peak - maxKwh * 4) < 1e-9);
   const plots = standardPlots(data);
-  assert.equal(plots.length, 16); // histogram, annual, 2 heat maps, 7 weekdays, 4 averages, box plot
+  assert.equal(plots.length, 17); // histogram, load distribution, annual, 2 heat maps, 7 weekdays, 4 averages, box plot
   assert.equal(plots[0].bins.reduce((a, b) => a + b.count, 0), data.power.length);
   const box = plots.at(-1);
   assert.equal(box.boxes.reduce((a, b) => a + b.n, 0), data.power.length);
@@ -86,6 +86,37 @@ const series = (rows) => ({
   power: Float64Array.from(rows.map((r) => r[1] * 4)),
   intervalMin: 15,
   demandType: "kW",
+});
+
+test("load distribution sorts every reading and counts repeats as at or above", () => {
+  const plot = loadDistribution({ power: Float64Array.from([4, 8, 2, 4, NaN, 4]), intervalMin: 15, demandType: "kW" });
+  assert.deepEqual(plot.points, [
+    [0.2, 8, 0.2],
+    [0.4, 4, 0.8],
+    [0.6, 4, 0.8],
+    [0.8, 4, 0.8],
+    [1, 2, 1],
+  ]);
+  assert.equal(plot.totalHours, 1.25);
+  assert.equal(plot.xLabel, "Likelihood of Exceedance");
+  assert.equal(plot.yLabel, "Load (kW)");
+  assert.equal(plot.legend, "Load Distribution");
+  assert.match(plot.help, /Load was 4\.0 kW or higher 80\.0% of the time\./);
+});
+
+test("load distribution covers the whole sample from its peak", () => {
+  const { meters } = loadSample();
+  const data = combineMeters(meters, { demandType: "kW" });
+  const plot = loadDistribution(data);
+  assert.equal(plot.points.length, data.power.length);
+  assert.equal(plot.points[0][1], summaryStats(data).peak);
+  assert.equal(plot.points.at(-1)[0], 1);
+  assert.equal(plot.totalHours, data.power.length / 4);
+});
+
+test("the plain-English reading stays honest at the extremes", () => {
+  assert.equal(describeExceedance(38.4, 0.0001, "kW"), "Load was 38.4 kW or higher less than 0.1% of the time.");
+  assert.equal(describeExceedance(0, 1, "kVA"), "Load was 0.0 kVA or higher 100% of the time.");
 });
 
 test("week heat map keeps the sample's daily totals and every day", () => {

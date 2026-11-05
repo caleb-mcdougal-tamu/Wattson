@@ -9,7 +9,7 @@
 //   MONTHLY DEMAND ANALYSIS       -> monthlyBoxPlot()
 //   (the run of plots at the bottom of the script) -> standardPlots()
 //
-// weekHeatmap() and dayHeatmap() are additions with no Python counterpart.
+// loadDistribution(), weekHeatmap() and dayHeatmap() are additions with no Python counterpart.
 //
 // The functions return plain data; src/lib/charts.js turns it into charts.
 // Timestamps are wall-clock times stored as UTC milliseconds (see smartImport.js).
@@ -178,6 +178,49 @@ export function histogram(data, header = "", bins = 30) {
     yLabel: "Count",
     unit: demandType,
     bins: counts.map((count, i) => ({ from: lo + i * width, to: lo + (i + 1) * width, count })),
+  };
+}
+
+// ------------------------------------------------------------ CUMULATIVE LOAD DISTRIBUTION (not in the Python tool)
+
+const percentText = (share) => {
+  if (share >= 1) return "100%";
+  return share * 100 < 0.1 ? "less than 0.1%" : `${(share * 100).toFixed(1)}%`;
+};
+
+// The plain-English reading of one point on the curve.
+export const describeExceedance = (load, share, unit) =>
+  `Load was ${load.toLocaleString(undefined, { maximumFractionDigits: 1, minimumFractionDigits: 1 })} ${unit} or higher ${percentText(share)} of the time.`;
+
+// Every reading, sorted from highest to lowest and spaced evenly by rank. Each point
+// is [rank / n, load, share of readings at or above that load]. The share differs
+// from rank / n only when readings repeat, and it keeps the wording "or higher" true.
+export function loadDistribution(data, header = "") {
+  const { power, intervalMin, demandType } = data;
+  const sorted = Float64Array.from(power).filter((p) => !isNaN(p)).sort();
+  const n = sorted.length;
+  const points = new Array(n);
+  let firstOfRun = 0; // where the run of readings equal to the current one starts
+  for (let i = 0; i < n; i++) {
+    if (sorted[i] !== sorted[firstOfRun]) firstOfRun = i;
+    points[n - 1 - i] = [(n - i) / n, sorted[i], (n - firstOfRun) / n];
+  }
+  const example = points.find((p) => p[2] >= 0.5);
+  return {
+    id: "load-distribution",
+    kind: "distribution",
+    title: withHeader(header, "Cumulative Load Distribution"),
+    xLabel: "Likelihood of Exceedance",
+    yLabel: `Load (${demandType})`,
+    legend: "Load Distribution",
+    unit: demandType,
+    points,
+    totalHours: (n * intervalMin) / 60,
+    help:
+      "How to read this chart: every reading is sorted from highest load to lowest. Likelihood of Exceedance is the share of " +
+      "time the load was at or above a given level, so 0.2 means 20% of the time." +
+      (example ? ` For example: ${describeExceedance(example[1], example[2], demandType)}` : "") +
+      " Rare peaks are at the far left and the lowest loads are at the far right. A flat stretch means the load stays near that level for a lot of the time.",
   };
 }
 
@@ -451,10 +494,11 @@ export const STANDARD_DAILY = [
 ];
 
 // The eight visualizations the Python tool produces, in the same order, with the
-// two heat maps added after the annual plot.
+// load distribution added after the histogram and the two heat maps after the annual plot.
 export function standardPlots(data, { header = "", bins = 30 } = {}) {
   return [
     histogram(data, header, bins),
+    loadDistribution(data, header),
     annualDemand(data, header),
     weekHeatmap(data, header),
     dayHeatmap(data, header),

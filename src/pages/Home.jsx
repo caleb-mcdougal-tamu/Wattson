@@ -194,8 +194,8 @@ export default function Home() {
         <div className="px-1 pt-2">
           <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Interval demand, visualized</h1>
           <p className="mt-1 text-sm text-neutral-500">
-            Open 15-minute (or any interval) usage data to plot demand patterns: histogram, annual trend, heat maps,
-            daily profiles and monthly box plots. Files are read on this device and never uploaded.
+            Open 15-minute (or any interval) usage data to plot demand patterns: histogram, load distribution, annual trend,
+            heat maps, daily profiles and monthly box plots. Files are read on this device and never uploaded.
           </p>
         </div>
       )}

@@ -10,7 +10,7 @@ There is no backend and no account. Files are read and plotted in the browser an
 
 ## What it makes
 
-The same eight visualizations as the Python tool, in the same order, plus two heat maps (listed under Plus):
+The same eight visualizations as the Python tool, in the same order, plus a cumulative load distribution and two heat maps (listed under Plus):
 
 1. Histogram of demand magnitude
 2. Annual demand pattern (with peak, average, lowest nonzero and zero-demand markers)
@@ -23,6 +23,7 @@ The same eight visualizations as the Python tool, in the same order, plus two he
 
 Plus:
 
+- **Cumulative load distribution:** every reading sorted from highest to lowest load against its likelihood of exceedance, with a plain-English reading on hover or tap and an info icon explaining the chart. This is an addition with no counterpart in the Python tool, and it appears after the histogram.
 - **Heat maps:** day of week vs. week, switchable between daily average demand, daily peak demand and daily total kWh; and time of day vs. date, showing every interval with a zoomable date axis. These are additions with no counterpart in the Python tool, and they appear after the annual demand pattern.
 - **Custom daily profile builder:** pick any days of the week and months and add an average daily demand plot (the Python tool's `daily_demand_anaylsis()` without editing code).
 - **Summary stats:** peak demand and when it happened, average, lowest nonzero, load factor, total kWh, zero-demand intervals.

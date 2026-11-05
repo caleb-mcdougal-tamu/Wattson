@@ -5,7 +5,7 @@ import * as echarts from "echarts/core";
 import { BarChart, BoxplotChart, HeatmapChart, LineChart, ScatterChart } from "echarts/charts";
 import { DataZoomComponent, GridComponent, LegendComponent, TitleComponent, TooltipComponent, VisualMapContinuousComponent } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
-import { DAY_SHORT, MONTH_SHORT } from "@/lib/demandAnalysis";
+import { DAY_SHORT, MONTH_SHORT, describeExceedance } from "@/lib/demandAnalysis";
 
 echarts.use([BarChart, BoxplotChart, HeatmapChart, LineChart, ScatterChart, DataZoomComponent, GridComponent, LegendComponent, TitleComponent, TooltipComponent, VisualMapContinuousComponent, CanvasRenderer]);
 
@@ -17,6 +17,7 @@ export const COLORS = {
   avg: "#d4a106", // matplotlib's "y", darkened so it reads on white
   min: "#1f3fbf", // blue
   zero: "#2ca02c", // green
+  distribution: "#7f7f7f", // gray
   day: "rgba(102, 102, 102, 0.3)", // 0.4 gray at alpha 0.3
   dailyAvg: "#111111",
   text: "#404040",
@@ -49,7 +50,7 @@ const formatMinutes = (m) => `${pad(Math.floor(m / 60))}:${pad(Math.round(m % 60
 
 export function hasData(plot) {
   if (plot.kind === "histogram") return plot.bins.some((b) => b.count);
-  if (plot.kind === "annual") return plot.points.length > 0;
+  if (plot.kind === "annual" || plot.kind === "distribution") return plot.points.length > 0;
   if (plot.kind === "daily") return plot.avg.length > 0;
   if (plot.kind === "box") return plot.boxes.length > 0;
   if (plot.kind === "weekHeatmap" || plot.kind === "dayHeatmap") return plot.cells.length > 0;
@@ -130,6 +131,64 @@ function histogramOption(plot, exp) {
         data: plot.bins.map((b) => b.count),
         barCategoryGap: "4%",
         itemStyle: { color: COLORS.demand },
+      },
+    ],
+  };
+}
+
+function distributionOption(plot, exp) {
+  const o = base(plot, exp);
+  const hours = (h) => h.toLocaleString(undefined, { maximumFractionDigits: h < 10 ? 2 : 0 });
+  const grid = { ...o.grid, bottom: exp ? 90 : 52 };
+  return {
+    ...o,
+    grid,
+    legend: {
+      top: grid.top + 8,
+      right: grid.right + 8,
+      selectedMode: false,
+      itemWidth: exp ? 14 : 10,
+      itemHeight: exp ? 14 : 10,
+      backgroundColor: "#ffffff",
+      borderColor: "#d4d4d4",
+      borderWidth: 1,
+      textStyle: { fontSize: exp ? 15 : 11, color: COLORS.text },
+    },
+    tooltip: {
+      ...o.tooltip,
+      // Any spot in the plot reads the nearest point, since the dots are small to aim at.
+      trigger: "axis",
+      axisPointer: { type: "line", snap: true },
+      formatter: ([p]) => {
+        const [, load, share] = p.value;
+        return (
+          `<div style="white-space:normal;max-width:260px"><b>${describeExceedance(load, share, plot.unit)}</b><br/>` +
+          `That is ${hours(share * plot.totalHours)} of the ${hours(plot.totalHours)} hours in this data.</div>`
+        );
+      },
+    },
+    xAxis: {
+      type: "value",
+      min: 0,
+      max: 1,
+      interval: 0.2,
+      ...axisStyle(o._fs),
+      axisLabel: { ...axisStyle(o._fs).axisLabel, formatter: (v) => v.toFixed(1) },
+      ...axisName(plot.xLabel, exp, exp ? 50 : 30),
+    },
+    yAxis: { type: "value", ...axisStyle(o._fs), ...axisName(plot.yLabel, exp, exp ? 70 : 42) },
+    series: [
+      {
+        type: "scatter",
+        name: plot.legend,
+        data: plot.points,
+        symbolSize: exp ? 6 : 4,
+        itemStyle: { color: COLORS.distribution },
+        emphasis: { disabled: true },
+        clip: false, // keep the dots at 0 and 1 whole
+        large: plot.points.length > 5000,
+        // Exports are captured right after drawing, so they can't draw in stages.
+        progressive: 0,
       },
     ],
   };
@@ -459,7 +518,7 @@ function dayHeatmapOption(plot, exp) {
 }
 
 export function buildOption(plot, { exportMode = false } = {}) {
-  const build = { histogram: histogramOption, annual: annualOption, weekHeatmap: weekHeatmapOption, dayHeatmap: dayHeatmapOption, daily: dailyOption, box: boxOption }[plot.kind];
+  const build = { histogram: histogramOption, distribution: distributionOption, annual: annualOption, weekHeatmap: weekHeatmapOption, dayHeatmap: dayHeatmapOption, daily: dailyOption, box: boxOption }[plot.kind];
   const option = build(plot, exportMode);
   delete option._fs;
   return option;
