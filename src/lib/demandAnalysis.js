@@ -9,6 +9,8 @@
 //   MONTHLY DEMAND ANALYSIS       -> monthlyBoxPlot()
 //   (the run of plots at the bottom of the script) -> standardPlots()
 //
+// weekHeatmap() and dayHeatmap() are additions with no Python counterpart.
+//
 // The functions return plain data; src/lib/charts.js turns it into charts.
 // Timestamps are wall-clock times stored as UTC milliseconds (see smartImport.js).
 //
@@ -310,6 +312,132 @@ export function monthlyBoxPlot(data, header = "") {
   };
 }
 
+// ------------------------------------------------------------ HEAT MAPS (not in the Python tool)
+
+// Year and week number as ISO 8601 counts them: weeks start on Monday and belong
+// to the year holding their Thursday, so a week is never split across two years.
+function weekLabel(monday) {
+  const thursday = monday + 3 * MS_DAY;
+  const year = new Date(thursday).getUTCFullYear();
+  const week = Math.floor((thursday - Date.UTC(year, 0, 1)) / (7 * MS_DAY)) + 1;
+  return `${year}-${String(week).padStart(2, "0")}`;
+}
+
+// The values a day-of-week heat map cell can show; the user picks one in the app.
+const WEEK_METRICS = {
+  avg: { title: "Daily Average Demand", name: "Average" },
+  peak: { title: "Daily Peak Demand", name: "Peak" },
+  total: { title: "Daily Total Energy", name: "Total" },
+};
+export const weekMetricOptions = (demandType) => [
+  { value: "avg", label: `Average ${demandType}` },
+  { value: "peak", label: `Peak ${demandType}` },
+  { value: "total", label: "Total kWh" },
+];
+
+export function selectWeekMetric(plot, metric) {
+  return {
+    ...plot,
+    metric,
+    metricName: WEEK_METRICS[metric].name,
+    metricUnit: metric === "total" ? "kWh" : plot.unit,
+    title: withHeader(plot.header, `${WEEK_METRICS[metric].title} by Week and Day of Week`),
+  };
+}
+
+// One column per calendar week, one row per day of the week. Every week between
+// the first and last day gets a column, so gaps in the data show as blank cells.
+export function weekHeatmap(data, header = "", metric = "avg") {
+  const { ts, kwh, power, demandType } = data;
+  const byDay = new Map(); // day number -> { sum, n, peak, total }
+  for (let i = 0; i < ts.length; i++) {
+    const p = power[i];
+    if (isNaN(p)) continue;
+    const d = dayNumber(ts[i]);
+    const b = byDay.get(d);
+    if (b) {
+      b.sum += p;
+      b.n++;
+      b.total += kwh[i];
+      if (p > b.peak) b.peak = p;
+    } else byDay.set(d, { sum: p, n: 1, peak: p, total: kwh[i] });
+  }
+  const dayNums = [...byDay.keys()].sort((a, b) => a - b);
+  const firstMonday = dayNums.length ? dayNums[0] - dayOfWeek(dayNums[0] * MS_DAY) : 0;
+  const weekCount = dayNums.length ? Math.floor((dayNums[dayNums.length - 1] - firstMonday) / 7) + 1 : 0;
+  return selectWeekMetric(
+    {
+      id: "week-heatmap",
+      kind: "weekHeatmap",
+      header,
+      xLabel: "Week",
+      yLabel: "Day of Week",
+      unit: demandType,
+      weeks: Array.from({ length: weekCount }, (_, w) => weekLabel((firstMonday + w * 7) * MS_DAY)),
+      cells: dayNums.map((d) => {
+        const b = byDay.get(d);
+        return {
+          date: d * MS_DAY,
+          week: Math.floor((d - firstMonday) / 7),
+          day: (d - firstMonday) % 7,
+          avg: b.sum / b.n,
+          peak: b.peak,
+          total: b.total,
+        };
+      }),
+    },
+    metric
+  );
+}
+
+// One column per date, one row per interval of the day, with no averaging across
+// intervals. The only cells that combine readings are those of the repeated hour
+// when clocks fall back; the skipped hour in spring is left blank.
+export function dayHeatmap(data, header = "") {
+  const { ts, power, intervalMin, demandType } = data;
+  let firstDay = Infinity;
+  let lastDay = -Infinity;
+  for (let i = 0; i < ts.length; i++) {
+    const d = dayNumber(ts[i]);
+    if (d < firstDay) firstDay = d;
+    if (d > lastDay) lastDay = d;
+  }
+  const dayCount = ts.length ? lastDay - firstDay + 1 : 0;
+  const rows = Math.ceil(1440 / intervalMin);
+  const sum = new Float64Array(dayCount * rows);
+  const count = new Uint16Array(dayCount * rows);
+  for (let i = 0; i < ts.length; i++) {
+    if (isNaN(power[i])) continue;
+    const row = Math.min(rows - 1, Math.floor(minuteOfDay(ts[i]) / intervalMin));
+    const at = (dayNumber(ts[i]) - firstDay) * rows + row;
+    sum[at] += power[i];
+    count[at]++;
+  }
+  const cells = [];
+  let min = Infinity;
+  let max = -Infinity;
+  for (let at = 0; at < sum.length; at++) {
+    if (!count[at]) continue;
+    const v = sum[at] / count[at];
+    if (v < min) min = v;
+    if (v > max) max = v;
+    cells.push([Math.floor(at / rows), at % rows, v]);
+  }
+  return {
+    id: "day-heatmap",
+    kind: "dayHeatmap",
+    title: withHeader(header, "Demand by Time of Day and Date"),
+    xLabel: "Date",
+    yLabel: "Hour of Day",
+    unit: demandType,
+    dates: Array.from({ length: dayCount }, (_, i) => (firstDay + i) * MS_DAY),
+    minutes: Array.from({ length: rows }, (_, r) => r * intervalMin),
+    cells,
+    min,
+    max,
+  };
+}
+
 // ------------------------------------------------------------ the standard set of plots
 
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
@@ -322,11 +450,14 @@ export const STANDARD_DAILY = [
   { id: "dec-jan", daysToPlot: ALL_DAYS, monthsToPlot: [12, 1], titleTail: "for days in December and January" },
 ];
 
-// The eight visualizations the Python tool produces, in the same order.
+// The eight visualizations the Python tool produces, in the same order, with the
+// two heat maps added after the annual plot.
 export function standardPlots(data, { header = "", bins = 30 } = {}) {
   return [
     histogram(data, header, bins),
     annualDemand(data, header),
+    weekHeatmap(data, header),
+    dayHeatmap(data, header),
     ...dailyDemandAnalysis(data, { daysToPlot: ALL_DAYS, averageDays: false, monthsToPlot: ALL_MONTHS, header, id: "day" }),
     ...STANDARD_DAILY.flatMap((d) => dailyDemandAnalysis(data, { ...d, averageDays: true, header })),
     monthlyBoxPlot(data, header),

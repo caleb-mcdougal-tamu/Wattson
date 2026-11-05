@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { echarts, buildOption } from "@/lib/charts";
 
 // An interactive ECharts chart. It is created only once it scrolls near the
-// screen, so a page of fourteen charts stays quick on phones.
+// screen, so a page of sixteen charts stays quick on phones.
 export default function Chart({ plot, className }) {
   const ref = useRef(null);
   const chartRef = useRef(null);

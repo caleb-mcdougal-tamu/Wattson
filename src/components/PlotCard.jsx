@@ -4,7 +4,9 @@ import Chart from "@/components/Chart";
 import { Button } from "@/components/ui/button";
 import { hasData } from "@/lib/charts";
 
-export default function PlotCard({ plot, number, onDownload, onShare, onRemove, busy }) {
+const TALL_PLOTS = new Set(["annual", "weekHeatmap", "dayHeatmap"]);
+
+export default function PlotCard({ plot, number, onDownload, onShare, onRemove, busy, controls }) {
   const empty = !hasData(plot);
   return (
     <article className="rounded-2xl border border-neutral-200 bg-white shadow-sm">
@@ -19,12 +21,13 @@ export default function PlotCard({ plot, number, onDownload, onShare, onRemove, 
           </button>
         )}
       </header>
+      {controls && !empty && <div className="px-4 pt-2">{controls}</div>}
       {empty ? (
         <p className="mx-4 my-4 rounded-xl bg-neutral-50 py-10 text-center text-sm text-neutral-400">
           No data for these days and months.
         </p>
       ) : (
-        <Chart plot={plot} className={plot.kind === "annual" ? "h-[340px] sm:h-[400px] px-1" : "h-[300px] sm:h-[360px] px-1"} />
+        <Chart plot={plot} className={TALL_PLOTS.has(plot.kind) ? "h-[340px] sm:h-[400px] px-1" : "h-[300px] sm:h-[360px] px-1"} />
       )}
       {!empty && (
         <footer className="flex justify-end gap-1 border-t border-neutral-100 px-2 py-1.5">

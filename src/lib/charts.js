@@ -2,12 +2,12 @@
 // interactive charts in the app and for the PNGs that are downloaded or saved.
 // Colors follow the Python tool's matplotlib plots.
 import * as echarts from "echarts/core";
-import { BarChart, BoxplotChart, LineChart, ScatterChart } from "echarts/charts";
-import { DataZoomComponent, GridComponent, LegendComponent, TitleComponent, TooltipComponent } from "echarts/components";
+import { BarChart, BoxplotChart, HeatmapChart, LineChart, ScatterChart } from "echarts/charts";
+import { DataZoomComponent, GridComponent, LegendComponent, TitleComponent, TooltipComponent, VisualMapContinuousComponent } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { DAY_SHORT, MONTH_SHORT } from "@/lib/demandAnalysis";
 
-echarts.use([BarChart, BoxplotChart, LineChart, ScatterChart, DataZoomComponent, GridComponent, LegendComponent, TitleComponent, TooltipComponent, CanvasRenderer]);
+echarts.use([BarChart, BoxplotChart, HeatmapChart, LineChart, ScatterChart, DataZoomComponent, GridComponent, LegendComponent, TitleComponent, TooltipComponent, VisualMapContinuousComponent, CanvasRenderer]);
 
 export { echarts };
 
@@ -22,6 +22,9 @@ export const COLORS = {
   text: "#404040",
   grid: "#e5e5e5",
 };
+
+// matplotlib's plasma color map, sampled evenly, for the heat maps.
+const PLASMA = ["#0d0887", "#46039f", "#7201a8", "#9c179e", "#bd3786", "#d8576b", "#ed7953", "#fb9f3a", "#fdca26", "#f0f921"];
 
 export const EXPORT_SIZE = { width: 1400, height: 820 };
 
@@ -42,11 +45,14 @@ const formatHour = (h) => {
   return `${pad(Math.floor(mins / 60))}:${pad(mins % 60)}`;
 };
 
+const formatMinutes = (m) => `${pad(Math.floor(m / 60))}:${pad(Math.round(m % 60))}`;
+
 export function hasData(plot) {
   if (plot.kind === "histogram") return plot.bins.some((b) => b.count);
   if (plot.kind === "annual") return plot.points.length > 0;
   if (plot.kind === "daily") return plot.avg.length > 0;
   if (plot.kind === "box") return plot.boxes.length > 0;
+  if (plot.kind === "weekHeatmap" || plot.kind === "dayHeatmap") return plot.cells.length > 0;
   return false;
 }
 
@@ -314,8 +320,146 @@ function boxOption(plot, exp) {
   };
 }
 
+// The color scale runs from zero to the largest value, as in a report figure.
+function colorBar(values, unit, exp) {
+  let lo = 0;
+  let hi = 0;
+  for (const v of values) {
+    if (v < lo) lo = v;
+    if (v > hi) hi = v;
+  }
+  return {
+    type: "continuous",
+    min: lo,
+    max: hi > lo ? hi : lo + 1,
+    dimension: 2,
+    seriesIndex: 0,
+    calculable: false,
+    hoverLink: false,
+    inRange: { color: PLASMA },
+    right: exp ? 26 : 8,
+    top: exp ? 80 : 12,
+    itemWidth: exp ? 22 : 12,
+    itemHeight: exp ? 520 : 200,
+    text: [`${fmt(hi, 0)} ${unit}`, fmt(lo, 0)],
+    textGap: 6,
+    textStyle: { color: COLORS.text, fontSize: exp ? 14 : 10 },
+  };
+}
+
+function weekHeatmapOption(plot, exp) {
+  const o = base(plot, exp);
+  const { metric } = plot;
+  const data = plot.cells.map((c) => [c.week, c.day, c[metric]]);
+  return {
+    ...o,
+    legend: undefined,
+    grid: { left: exp ? 100 : 58, right: exp ? 130 : 76, top: exp ? 80 : 16, bottom: exp ? 110 : 76 },
+    tooltip: {
+      ...o.tooltip,
+      trigger: "item",
+      formatter: (p) => {
+        const c = plot.cells[p.dataIndex];
+        return (
+          `${DAY_SHORT[c.day]} ${formatDate(c.date)} (week ${plot.weeks[c.week]})<br/>` +
+          `<b>${plot.metricName}: ${fmt(c[metric])} ${plot.metricUnit}</b>`
+        );
+      },
+    },
+    visualMap: colorBar(data.map((c) => c[2]), plot.metricUnit, exp),
+    xAxis: {
+      type: "category",
+      data: plot.weeks,
+      axisLabel: { color: COLORS.text, fontSize: exp ? 12 : 10, rotate: 90, interval: exp && plot.weeks.length <= 60 ? 0 : "auto" },
+      axisLine: { lineStyle: { color: "#a3a3a3" } },
+      axisTick: { show: false },
+      ...axisName(plot.xLabel, exp, exp ? 72 : 54),
+    },
+    yAxis: {
+      type: "category",
+      inverse: true,
+      data: DAY_SHORT,
+      axisLabel: { color: COLORS.text, fontSize: o._fs },
+      axisLine: { lineStyle: { color: "#a3a3a3" } },
+      axisTick: { show: false },
+      ...axisName(plot.yLabel, exp, exp ? 70 : 42),
+    },
+    series: [
+      {
+        type: "heatmap",
+        data,
+        // Exports are captured right after drawing, so they can't draw in stages.
+        progressive: 0,
+        itemStyle: { borderColor: "#ffffff", borderWidth: plot.weeks.length > 120 ? 0 : exp ? 1 : 0.5 },
+        emphasis: { itemStyle: { borderColor: "#171717", borderWidth: 1 } },
+      },
+    ],
+  };
+}
+
+function dayHeatmapOption(plot, exp) {
+  const o = base(plot, exp);
+  const step = exp ? 60 : 120; // label every hour in reports, every other hour on screen
+  const timeLabels = plot.minutes.map(formatMinutes);
+  // Redrawing tens of thousands of cells per slider move is too slow on phones and
+  // for multi-year files, so those redraw when the slider is released instead.
+  const redrawWhileDragging = !exp && plot.cells.length <= 40000 && window.matchMedia("(pointer: fine)").matches;
+  return {
+    ...o,
+    legend: undefined,
+    grid: { left: exp ? 100 : 58, right: exp ? 130 : 76, top: exp ? 80 : 16, bottom: exp ? 90 : 62 },
+    tooltip: {
+      ...o.tooltip,
+      trigger: "item",
+      formatter: (p) => {
+        const [day, row, v] = p.value;
+        return `${formatDate(plot.dates[day])} ${timeLabels[row]}<br/><b>${fmt(v)} ${plot.unit}</b>`;
+      },
+    },
+    visualMap: colorBar([plot.min, plot.max], plot.unit, exp),
+    dataZoom: exp
+      ? undefined
+      : [
+          // Same gestures as the annual chart: slider or Ctrl + wheel, and plain wheel and drag keep scrolling the page.
+          { type: "inside", xAxisIndex: 0, zoomOnMouseWheel: "ctrl", moveOnMouseWheel: false, moveOnMouseMove: false, preventDefaultMouseMove: false },
+          { type: "slider", xAxisIndex: 0, height: 18, bottom: 6, left: 58, right: 76, showDataShadow: false, realtime: redrawWhileDragging, labelFormatter: (_, label) => label },
+        ],
+    xAxis: {
+      type: "category",
+      data: plot.dates.map(formatDate),
+      axisLabel: { color: COLORS.text, fontSize: o._fs, hideOverlap: true },
+      axisLine: { lineStyle: { color: "#a3a3a3" } },
+      axisTick: { show: false },
+      // On screen the dates speak for themselves and the space goes to the zoom slider.
+      ...(exp ? axisName(plot.xLabel, exp, 50) : {}),
+    },
+    yAxis: {
+      type: "category",
+      inverse: true,
+      data: timeLabels,
+      axisLabel: {
+        color: COLORS.text,
+        fontSize: exp ? 13 : 10,
+        interval: (i) => plot.minutes[i] % step === 0,
+        formatter: (label) => String(Number(label.split(":")[0])),
+      },
+      axisLine: { lineStyle: { color: "#a3a3a3" } },
+      axisTick: { show: false },
+      ...axisName(plot.yLabel, exp, exp ? 60 : 34),
+    },
+    series: [
+      {
+        type: "heatmap",
+        data: plot.cells,
+        progressive: 0,
+        emphasis: { disabled: true },
+      },
+    ],
+  };
+}
+
 export function buildOption(plot, { exportMode = false } = {}) {
-  const build = { histogram: histogramOption, annual: annualOption, daily: dailyOption, box: boxOption }[plot.kind];
+  const build = { histogram: histogramOption, annual: annualOption, weekHeatmap: weekHeatmapOption, dayHeatmap: dayHeatmapOption, daily: dailyOption, box: boxOption }[plot.kind];
   const option = build(plot, exportMode);
   delete option._fs;
   return option;

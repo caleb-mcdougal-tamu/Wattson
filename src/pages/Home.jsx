@@ -10,7 +10,7 @@ import StatsCard from "@/components/StatsCard";
 import PlotCard from "@/components/PlotCard";
 import DailyBuilder from "@/components/DailyBuilder";
 import { importFile } from "@/lib/smartImport";
-import { validateInputs, combineMeters, summaryStats, standardPlots, dailyDemandAnalysis } from "@/lib/demandAnalysis";
+import { validateInputs, combineMeters, summaryStats, standardPlots, dailyDemandAnalysis, selectWeekMetric, weekMetricOptions } from "@/lib/demandAnalysis";
 import { renderPng, formatDate } from "@/lib/charts";
 import { renderAll, buildZip, buildPdf, statsRows, downloadBlob, plotFileName, fileSlug, timestamp, canShareFiles, shareBlob } from "@/lib/exports";
 import sampleUrl from "../../sample-data/SmartMeterTexas_IntervalData_sample.csv?url";
@@ -29,6 +29,7 @@ export default function Home() {
   const [titleHeader, setTitleHeader] = useState("");
   const [bins, setBins] = useState("30");
   const [custom, setCustom] = useState([]);
+  const [weekMetric, setWeekMetric] = useState("avg");
   const [columnsFor, setColumnsFor] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(null); // { kind, done, total }
@@ -94,16 +95,24 @@ export default function Home() {
   );
   const stats = useMemo(() => (data?.power.length ? summaryStats(data) : null), [data]);
 
-  const plots = useMemo(() => {
-    if (!stats) return [];
-    const header = deferredHeader.trim();
-    return [
-      ...standardPlots(data, { header, bins: deferredBins }),
-      ...custom.flatMap((c) =>
-        dailyDemandAnalysis(data, { ...c, header, id: `custom-${c.key}` }).map((p) => ({ ...p, customKey: c.key }))
-      ),
-    ];
-  }, [data, stats, deferredHeader, deferredBins, custom]);
+  // Kept in separate steps so adding a custom plot or changing the week heat map's
+  // value leaves the other plots untouched, along with any zoom set on them.
+  const header = deferredHeader.trim();
+  const standard = useMemo(
+    () => (stats ? standardPlots(data, { header, bins: deferredBins }) : []),
+    [data, stats, header, deferredBins]
+  );
+  const customPlots = useMemo(
+    () =>
+      stats
+        ? custom.flatMap((c) => dailyDemandAnalysis(data, { ...c, header, id: `custom-${c.key}` }).map((p) => ({ ...p, customKey: c.key })))
+        : [],
+    [data, stats, header, custom]
+  );
+  const plots = useMemo(
+    () => [...standard.map((p) => (p.kind === "weekHeatmap" ? selectWeekMetric(p, weekMetric) : p)), ...customPlots],
+    [standard, customPlots, weekMetric]
+  );
 
   const reportTitle = titleHeader.trim() || files[0]?.name.replace(/\.[^.]+$/, "") || "Wattson";
   const rows = stats ? statsRows(stats, { demandType, meters }) : [];
@@ -185,8 +194,8 @@ export default function Home() {
         <div className="px-1 pt-2">
           <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Interval demand, visualized</h1>
           <p className="mt-1 text-sm text-neutral-500">
-            Open 15-minute (or any interval) usage data to plot demand patterns: histogram, annual trend, daily
-            profiles and monthly box plots. Files are read on this device and never uploaded.
+            Open 15-minute (or any interval) usage data to plot demand patterns: histogram, annual trend, heat maps,
+            daily profiles and monthly box plots. Files are read on this device and never uploaded.
           </p>
         </div>
       )}
@@ -307,6 +316,7 @@ export default function Home() {
                 onDownload={() => exportPlot(p, i, false)}
                 onShare={canShare ? () => exportPlot(p, i, true) : undefined}
                 onRemove={p.customKey ? () => setCustom((c) => c.filter((x) => x.key !== p.customKey)) : undefined}
+                controls={p.kind === "weekHeatmap" ? <Segmented value={weekMetric} onChange={setWeekMetric} options={weekMetricOptions(demandType)} /> : undefined}
               />
             ))}
           </div>

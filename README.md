@@ -10,7 +10,7 @@ There is no backend and no account. Files are read and plotted in the browser an
 
 ## What it makes
 
-The same eight visualizations as the Python tool, in the same order:
+The same eight visualizations as the Python tool, in the same order, plus two heat maps (listed under Plus):
 
 1. Histogram of demand magnitude
 2. Annual demand pattern (with peak, average, lowest nonzero and zero-demand markers)
@@ -23,13 +23,14 @@ The same eight visualizations as the Python tool, in the same order:
 
 Plus:
 
+- **Heat maps:** day of week vs. week, switchable between daily average demand, daily peak demand and daily total kWh; and time of day vs. date, showing every interval with a zoomable date axis. These are additions with no counterpart in the Python tool, and they appear after the annual demand pattern.
 - **Custom daily profile builder:** pick any days of the week and months and add an average daily demand plot (the Python tool's `daily_demand_anaylsis()` without editing code).
 - **Summary stats:** peak demand and when it happened, average, lowest nonzero, load factor, total kWh, zero-demand intervals.
 - **Exports:** each plot as a PNG, all plots as a ZIP (with `summary.csv`), or a PDF report (summary page plus one plot per page). On phones, **Share** sends any of them through the share sheet (Save to Files, email, Messages, and so on).
 - **kW or kVA:** kVA divides each meter's kW by its power factor.
 - **Multiple meters:** add several files, or a file with several meters, and their demand is summed.
 
-Charts are interactive in the app (tap or hover for values; zoom the annual chart with its slider, or Ctrl + scroll on a computer). Downloads are fixed-size PNGs ready for reports.
+Charts are interactive in the app (tap or hover for values; zoom the annual chart and the time-of-day heat map with their sliders, or Ctrl + scroll on a computer). Downloads are fixed-size PNGs ready for reports.
 
 ## Data files
 
